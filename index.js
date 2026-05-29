@@ -17,19 +17,34 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
+const EMBED_COLOR = 0xeb91ee;
+
+// Supports either LOG_CHANNEL_ID or your old TRANSCRIPT_CHANNEL_ID name.
+function getLogChannelId() {
+  return process.env.LOG_CHANNEL_ID || process.env.TRANSCRIPT_CHANNEL_ID;
+}
+
 client.once("clientReady", async () => {
   console.log(`${client.user.tag} is online`);
 
-  client.user.setActivity("💗 Female Verification", {
+  // General server status, not only verification.
+  client.user.setActivity("the server", {
     type: ActivityType.Watching
   });
 
   const guild = client.guilds.cache.get(process.env.GUILD_ID);
 
+  if (!guild) {
+    console.log("Guild not found. Check GUILD_ID in your environment variables.");
+    return;
+  }
+
   await guild.commands.create({
     name: "panel",
     description: "Send female verification panel"
   });
+
+  console.log("Slash command /panel is ready.");
 });
 
 client.on(Events.InteractionCreate, async interaction => {
@@ -40,7 +55,7 @@ client.on(Events.InteractionCreate, async interaction => {
         .setDescription(
           "Click the button below to get verified.\n\nThis helps keep the private girls-only space safe and comfortable."
         )
-        .setColor(0xeb91ee)
+        .setColor(EMBED_COLOR)
         .setFooter({ text: "RGD Verification System" })
         .setTimestamp();
 
@@ -120,7 +135,7 @@ client.on(Events.InteractionCreate, async interaction => {
       .setDescription(
         "Thank you for contacting us.\nA verifier will assist you shortly."
       )
-      .setColor(0xeb91ee)
+      .setColor(EMBED_COLOR)
       .setFooter({ text: `Ticket opened by ${interaction.user.username}` })
       .setTimestamp();
 
@@ -136,6 +151,22 @@ client.on(Events.InteractionCreate, async interaction => {
       embeds: [ticketEmbed],
       components: [row]
     });
+
+    const logChannel = interaction.guild.channels.cache.get(getLogChannelId());
+
+    if (logChannel) {
+      const openLog = new EmbedBuilder()
+        .setTitle("🎀 Verification Log")
+        .setDescription(
+          `**Event:** Ticket Opened\n**Ticket:** ${channel.name}\n**Member:** ${interaction.user}`
+        )
+        .setColor(EMBED_COLOR)
+        .setTimestamp();
+
+      await logChannel.send({
+        embeds: [openLog]
+      });
+    }
 
     return interaction.editReply({
       content: `Your ticket was created: ${channel}`
@@ -181,6 +212,27 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.reply({
         content: "Admins only.",
         ephemeral: true
+      });
+    }
+
+    const logChannel = interaction.guild.channels.cache.get(getLogChannelId());
+
+    if (logChannel) {
+      const userId = interaction.channel.topic?.replace(
+        "verification-user:",
+        ""
+      );
+
+      const closeLog = new EmbedBuilder()
+        .setTitle("🎀 Verification Log")
+        .setDescription(
+          `**Event:** Ticket Closed\n**Ticket:** ${interaction.channel.name}\n**Member:** <@${userId}>\n**Closed By:** ${interaction.user}`
+        )
+        .setColor(EMBED_COLOR)
+        .setTimestamp();
+
+      await logChannel.send({
+        embeds: [closeLog]
       });
     }
 
