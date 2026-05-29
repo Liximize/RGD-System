@@ -238,20 +238,20 @@ client.once("clientReady", async () => {
     return;
   }
 
-  await guild.commands.create({
+await guild.commands.set([
+  {
     name: "verify",
     description: "Send the female verification panel"
-  });
-
-  await guild.commands.create({
+  },
+  {
     name: "livecheck",
     description: "Check if the Twitch streamer is live"
-  });
-
-  await guild.commands.create({
+  },
+  {
     name: "testalert",
     description: "Send a test Twitch live alert"
-  });
+  }
+]);
 
   console.log("Slash commands /verify, /livecheck, and /testalert are ready.");
 
