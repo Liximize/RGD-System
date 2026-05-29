@@ -1,0 +1,198 @@
+require("dotenv").config();
+
+const {
+  Client,
+  GatewayIntentBits,
+  PermissionsBitField,
+  ChannelType,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  Events,
+  ActivityType
+} = require("discord.js");
+
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds]
+});
+
+client.once("clientReady", async () => {
+  console.log(`${client.user.tag} is online`);
+
+  client.user.setActivity("💗 Female Verification", {
+    type: ActivityType.Watching
+  });
+
+  const guild = client.guilds.cache.get(process.env.GUILD_ID);
+
+  await guild.commands.create({
+    name: "panel",
+    description: "Send female verification panel"
+  });
+});
+
+client.on(Events.InteractionCreate, async interaction => {
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === "panel") {
+      const embed = new EmbedBuilder()
+        .setTitle("🎀 Female Verification")
+        .setDescription(
+          "Click the button below to get verified.\n\nThis helps keep the private girls-only space safe and comfortable."
+        )
+        .setColor(0xeb91ee)
+        .setFooter({ text: "RGD Verification System" })
+        .setTimestamp();
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("open_ticket")
+          .setLabel("💗 Get Verified")
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      return interaction.reply({
+        embeds: [embed],
+        components: [row]
+      });
+    }
+  }
+
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === "open_ticket") {
+    await interaction.deferReply({ ephemeral: true });
+
+    const existing = interaction.guild.channels.cache.find(channel => {
+      return (
+        channel.topic === `verification-user:${interaction.user.id}` &&
+        channel.parentId === process.env.TICKET_CATEGORY_ID
+      );
+    });
+
+    if (existing) {
+      return interaction.editReply({
+        content: `You already have an open ticket: ${existing}`
+      });
+    }
+
+    const ticketChannels = interaction.guild.channels.cache.filter(channel => {
+      return (
+        channel.parentId === process.env.TICKET_CATEGORY_ID &&
+        channel.name.startsWith("ticket-")
+      );
+    });
+
+    const ticketNumber = ticketChannels.size + 1;
+    const ticketName = `ticket-${String(ticketNumber).padStart(4, "0")}`;
+
+    const channel = await interaction.guild.channels.create({
+      name: ticketName,
+      type: ChannelType.GuildText,
+      parent: process.env.TICKET_CATEGORY_ID,
+      topic: `verification-user:${interaction.user.id}`,
+      permissionOverwrites: [
+        {
+          id: interaction.guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: interaction.user.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
+        },
+        {
+          id: process.env.PING_ROLE_ID,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
+        }
+      ]
+    });
+
+    const ticketEmbed = new EmbedBuilder()
+      .setTitle("💌 Verification Ticket")
+      .setDescription(
+        "Thank you for contacting us.\nA verifier will assist you shortly."
+      )
+      .setColor(0xeb91ee)
+      .setFooter({ text: `Ticket opened by ${interaction.user.username}` })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("close_ticket")
+        .setLabel("Close Ticket")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await channel.send({
+      content: `<@&${process.env.PING_ROLE_ID}> | ${interaction.user}`,
+      embeds: [ticketEmbed],
+      components: [row]
+    });
+
+    return interaction.editReply({
+      content: `Your ticket was created: ${channel}`
+    });
+  }
+
+  if (interaction.customId === "close_ticket") {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return interaction.reply({
+        content: "Admins only.",
+        ephemeral: true
+      });
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("confirm_close_ticket")
+        .setLabel("Confirm Close")
+        .setStyle(ButtonStyle.Danger),
+
+      new ButtonBuilder()
+        .setCustomId("cancel_close_ticket")
+        .setLabel("Cancel")
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    return interaction.reply({
+      content: "Are you sure you want to close this ticket?",
+      components: [row],
+      ephemeral: true
+    });
+  }
+
+  if (interaction.customId === "cancel_close_ticket") {
+    return interaction.update({
+      content: "Ticket close cancelled.",
+      components: []
+    });
+  }
+
+  if (interaction.customId === "confirm_close_ticket") {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return interaction.reply({
+        content: "Admins only.",
+        ephemeral: true
+      });
+    }
+
+    await interaction.update({
+      content: "Closing ticket...",
+      components: []
+    });
+
+    setTimeout(() => {
+      interaction.channel.delete().catch(() => {});
+    }, 3000);
+  }
+});
+
+client.login(process.env.TOKEN);
