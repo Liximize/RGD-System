@@ -40,16 +40,16 @@ client.user.setActivity("💗 Watching over RGD", {
   }
 
   await guild.commands.create({
-    name: "panel",
-    description: "Send female verification panel"
-  });
+  name: "verify",
+  description: "Send the female verification panel"
+});
 
-  console.log("Slash command /panel is ready.");
+  console.log("Slash command /verify is ready.");
 });
 
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "panel") {
+    if (interaction.commandName === "verify") {
       const embed = new EmbedBuilder()
         .setTitle("🎀 Female Verification")
         .setDescription(
