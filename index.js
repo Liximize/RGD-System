@@ -27,7 +27,8 @@ function getLogChannelId() {
 client.once("clientReady", async () => {
   console.log(`${client.user.tag} is online`);
 
-client.user.setActivity("over RGD 💗", {
+// General server status.
+client.user.setActivity("💗 Watching over RGD", {
   type: ActivityType.Watching
 });
 
