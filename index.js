@@ -27,10 +27,9 @@ function getLogChannelId() {
 client.once("clientReady", async () => {
   console.log(`${client.user.tag} is online`);
 
-  // General server status, not only verification.
-  client.user.setActivity("the server", {
-    type: ActivityType.Watching
-  });
+client.user.setActivity("over RGD 💗", {
+  type: ActivityType.Watching
+});
 
   const guild = client.guilds.cache.get(process.env.GUILD_ID);
 
