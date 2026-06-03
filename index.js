@@ -10,7 +10,8 @@ const {
   ButtonStyle,
   EmbedBuilder,
   Events,
-  ActivityType
+  ActivityType,
+  MessageFlags
 } = require("discord.js");
 
 const client = new Client({
@@ -18,10 +19,21 @@ const client = new Client({
 });
 
 const EMBED_COLOR = 0xeb91ee;
-const CHECK_INTERVAL_MS = 60 * 1000;
+
+const TWITCH_CHECK_INTERVAL_MS = 60 * 1000;
+
+const TIKTOK_CHECK_INTERVAL_MS = Math.max(
+  30,
+  Number(process.env.TIKTOK_CHECK_INTERVAL_SECONDS || 60)
+) * 1000;
 
 let twitchAccessToken = null;
 let currentLiveStreamId = null;
+
+let TikTokLiveConnection = null;
+let WebcastEvent = null;
+
+const tiktokStates = new Map();
 
 // --------------------
 // Shared helpers
@@ -33,6 +45,10 @@ function getLogChannelId() {
 
 function getTwitchUrl() {
   return `https://twitch.tv/${process.env.TWITCH_STREAMER_NAME}`;
+}
+
+function getTikTokLiveChannelId() {
+  return process.env.TIKTOK_LIVE_CHANNEL_ID || process.env.TWITCH_LIVE_CHANNEL_ID;
 }
 
 // --------------------
@@ -61,7 +77,11 @@ async function getTwitchAccessToken() {
 }
 
 async function getStreamerLiveData() {
-  if (!process.env.TWITCH_CLIENT_ID || !process.env.TWITCH_CLIENT_SECRET || !process.env.TWITCH_STREAMER_NAME) {
+  if (
+    !process.env.TWITCH_CLIENT_ID ||
+    !process.env.TWITCH_CLIENT_SECRET ||
+    !process.env.TWITCH_STREAMER_NAME
+  ) {
     return null;
   }
 
@@ -98,19 +118,24 @@ async function getStreamerLiveData() {
 
 function buildLiveAlert(stream, isTest = false) {
   const streamerName = process.env.TWITCH_STREAMER_NAME;
-  const displayName = stream?.user_name || streamerName;
+  const displayName = stream?.user_name || streamerName || "streamer";
   const streamUrl = getTwitchUrl();
 
   const embed = new EmbedBuilder()
-    .setTitle(isTest ? "💗 Test Live Alert" : `💗 ${displayName} is Live!`)
+    .setTitle(isTest ? "💗 Test Twitch Alert" : "💗 Twitch Live Alert")
     .setDescription(
       isTest
         ? `This is how the live alert will look when **${displayName}** goes live.\n\n` +
           `**Title:** Test stream title\n` +
-          `**Category:** Just Chatting\n\n` +
+          `**Category:** Just Chatting\n` +
+          `**Platform:** Twitch\n` +
+          `**Status:** Test Alert\n\n` +
           `Come watch the stream!`
-        : `**Title:** ${stream.title || "No title"}\n` +
-          `**Category:** ${stream.game_name || "Unknown"}\n\n` +
+        : `**${displayName}** is live right now on Twitch.\n\n` +
+          `**Title:** ${stream.title || "No title"}\n` +
+          `**Category:** ${stream.game_name || "Unknown"}\n` +
+          `**Platform:** Twitch\n` +
+          `**Status:** Live Now\n\n` +
           `Come watch the stream!`
     )
     .setColor(EMBED_COLOR)
@@ -138,17 +163,19 @@ function buildLiveAlert(stream, isTest = false) {
 }
 
 async function sendLiveAlert(stream) {
-  const channel = await client.channels.fetch(process.env.LIVE_CHANNEL_ID).catch(() => null);
+  const channel = await client.channels
+    .fetch(process.env.TWITCH_LIVE_CHANNEL_ID)
+    .catch(() => null);
 
   if (!channel) {
-    console.log("Live alert channel not found. Check LIVE_CHANNEL_ID.");
+    console.log("Twitch live alert channel not found. Check TWITCH_LIVE_CHANNEL_ID.");
     return;
   }
 
   const { embed, row, displayName } = buildLiveAlert(stream, false);
 
   await channel.send({
-    content: `@everyone 💗 **${displayName} is live!**`,
+    content: `@everyone 💗 **${displayName} is live on Twitch!**`,
     embeds: [embed],
     components: [row],
     allowedMentions: {
@@ -158,11 +185,13 @@ async function sendLiveAlert(stream) {
 }
 
 async function sendTestAlert(interaction) {
-  const channel = await client.channels.fetch(process.env.LIVE_CHANNEL_ID).catch(() => null);
+  const channel = await client.channels
+    .fetch(process.env.TWITCH_LIVE_CHANNEL_ID)
+    .catch(() => null);
 
   if (!channel) {
     return interaction.editReply({
-      content: "I could not find the live alert channel. Check LIVE_CHANNEL_ID."
+      content: "I could not find the Twitch live alert channel. Check TWITCH_LIVE_CHANNEL_ID."
     });
   }
 
@@ -175,7 +204,7 @@ async function sendTestAlert(interaction) {
   const { embed, row, displayName } = buildLiveAlert(fakeStream, true);
 
   await channel.send({
-    content: `@everyone 💗 **${displayName} is live!**`,
+    content: `@everyone 💗 **${displayName} is live on Twitch!**`,
     embeds: [embed],
     components: [row],
     allowedMentions: {
@@ -184,14 +213,14 @@ async function sendTestAlert(interaction) {
   });
 
   return interaction.editReply({
-    content: `Test alert sent to ${channel}.`
+    content: `Twitch test alert sent to ${channel}.`
   });
 }
 
 async function checkStreamer() {
   try {
-    if (!process.env.LIVE_CHANNEL_ID) {
-      console.log("LIVE_CHANNEL_ID is not set. Skipping Twitch live check.");
+    if (!process.env.TWITCH_LIVE_CHANNEL_ID) {
+      console.log("TWITCH_LIVE_CHANNEL_ID is not set. Skipping Twitch live check.");
       return;
     }
 
@@ -199,7 +228,7 @@ async function checkStreamer() {
 
     if (!stream) {
       if (currentLiveStreamId !== null) {
-        console.log(`${process.env.TWITCH_STREAMER_NAME} went offline. Resetting alert.`);
+        console.log(`${process.env.TWITCH_STREAMER_NAME} went offline. Resetting Twitch alert.`);
       }
 
       currentLiveStreamId = null;
@@ -207,17 +236,488 @@ async function checkStreamer() {
     }
 
     if (currentLiveStreamId === stream.id) {
-      console.log(`${stream.user_name} is still live. No new alert.`);
+      console.log(`${stream.user_name} is still live on Twitch. No new alert.`);
       return;
     }
 
     currentLiveStreamId = stream.id;
 
-    console.log(`${stream.user_name} is live. Sending alert.`);
+    console.log(`${stream.user_name} is live on Twitch. Sending alert.`);
     await sendLiveAlert(stream);
   } catch (error) {
-    console.error("Live check error:", error.message);
+    console.error("Twitch live check error:", error.message);
   }
+}
+
+// --------------------
+// TikTok live alert system
+// --------------------
+
+function normalizeTikTokUsername(input) {
+  if (!input) return "";
+
+  let username = input.trim();
+
+  const urlMatch = username.match(/tiktok\.com\/@([^/?#]+)/i);
+  if (urlMatch) {
+    username = urlMatch[1];
+  }
+
+  username = username.replace(/^@/, "");
+  username = username.split("?")[0];
+  username = username.split("/")[0];
+
+  return username.trim();
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getTikTokUsers() {
+  return (process.env.TIKTOK_USERS || "")
+    .split(",")
+    .map(username => normalizeTikTokUsername(username))
+    .filter(Boolean);
+}
+
+function getTikTokLiveUrl(username) {
+  return `https://www.tiktok.com/@${username}/live`;
+}
+
+function ensureTikTokStates() {
+  for (const username of getTikTokUsers()) {
+    if (!tiktokStates.has(username)) {
+      tiktokStates.set(username, {
+        username,
+        status: "unknown",
+        isLive: false,
+        notified: false,
+        checking: false,
+        connection: null,
+        roomId: null,
+        lastCheckedAt: null,
+        lastReason: "Not checked yet",
+        lastError: null
+      });
+    }
+  }
+}
+
+async function loadTikTokConnector() {
+  const tiktokModule = await import("tiktok-live-connector");
+
+  TikTokLiveConnection = tiktokModule.TikTokLiveConnection;
+  WebcastEvent = tiktokModule.WebcastEvent;
+
+  if (!TikTokLiveConnection) {
+    throw new Error("TikTokLiveConnection could not be loaded.");
+  }
+
+  console.log("TikTok connector loaded.");
+}
+
+function createTikTokConnection(username) {
+  return new TikTokLiveConnection(username, {
+    processInitialData: false,
+    fetchRoomInfoOnConnect: false
+  });
+}
+
+async function runWithTimeout(promise, ms, timeoutMessage) {
+  let timeoutId;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function isProbablyOfflineError(message) {
+  const lower = String(message || "").toLowerCase();
+
+  return (
+    lower.includes("user_not_live") ||
+    lower.includes("not live") ||
+    lower.includes("offline") ||
+    lower.includes("room does not exist") ||
+    lower.includes("live has ended")
+  );
+}
+
+async function fetchTikTokLiveStatus(username) {
+  const reasons = [];
+
+  if (!TikTokLiveConnection) {
+    return {
+      isLive: false,
+      method: "disabled",
+      reason: "TikTok connector is not loaded."
+    };
+  }
+
+  try {
+    const connection = createTikTokConnection(username);
+
+    const isLive = await runWithTimeout(
+      connection.fetchIsLive(),
+      20000,
+      "fetchIsLive timed out."
+    );
+
+    return {
+      isLive: Boolean(isLive),
+      method: "fetchIsLive",
+      reason: `fetchIsLive returned ${Boolean(isLive)}.`
+    };
+  } catch (error) {
+    const message = error?.message || "fetchIsLive failed.";
+    reasons.push(`fetchIsLive failed: ${message}`);
+  }
+
+  let testConnection = null;
+
+  try {
+    testConnection = createTikTokConnection(username);
+
+    const liveState = await runWithTimeout(
+      testConnection.connect(),
+      25000,
+      "connect fallback timed out."
+    );
+
+    const roomId = liveState?.roomId || null;
+
+    await testConnection.disconnect().catch(() => {});
+
+    return {
+      isLive: true,
+      method: "connectFallback",
+      roomId,
+      reason: roomId
+        ? `connect fallback succeeded. Room ID: ${roomId}`
+        : "connect fallback succeeded."
+    };
+  } catch (error) {
+    if (testConnection) {
+      await testConnection.disconnect().catch(() => {});
+    }
+
+    const message = error?.message || "connect fallback failed.";
+    reasons.push(`connect fallback failed: ${message}`);
+
+    if (isProbablyOfflineError(message)) {
+      return {
+        isLive: false,
+        method: "connectFallback",
+        reason: "connect fallback suggests the account is offline."
+      };
+    }
+  }
+
+  return {
+    isLive: false,
+    method: "unknown",
+    reason: reasons.join(" | ") || "Could not detect live status."
+  };
+}
+
+function buildTikTokLiveAlert(username, isTest = false) {
+  const displayName = username.toUpperCase();
+  const liveUrl = getTikTokLiveUrl(username);
+
+  const embed = new EmbedBuilder()
+    .setTitle(isTest ? "💗 Test TikTok Alert" : "💗 TikTok Live Alert")
+    .setDescription(
+      isTest
+        ? `This is how the live alert will look when **${displayName}** goes live.\n\n` +
+          `**Title:** TikTok live stream\n` +
+          `**Platform:** TikTok\n` +
+          `**Status:** Test Alert\n\n` +
+          `Come watch the stream!`
+        : `**${displayName}** is live right now on TikTok.\n\n` +
+          `**Title:** TikTok live stream\n` +
+          `**Platform:** TikTok\n` +
+          `**Status:** Live Now\n\n` +
+          `Come watch the stream!`
+    )
+    .setColor(EMBED_COLOR)
+    .setURL(liveUrl)
+    .setFooter({ text: "RGD Live Alerts" })
+    .setTimestamp();
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel("▶ Watch Stream")
+      .setStyle(ButtonStyle.Link)
+      .setURL(liveUrl)
+  );
+
+  return { embed, row, displayName };
+}
+
+async function sendTikTokLiveAlert(username, isTest = false) {
+  const channelId = getTikTokLiveChannelId();
+
+  if (!channelId) {
+    console.log("TikTok live alert channel not found. Set TIKTOK_LIVE_CHANNEL_ID or TWITCH_LIVE_CHANNEL_ID.");
+    return;
+  }
+
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+
+  if (!channel) {
+    console.log("TikTok live alert channel could not be fetched.");
+    return;
+  }
+
+  const { embed, row, displayName } = buildTikTokLiveAlert(username, isTest);
+
+  await channel.send({
+    content: `@everyone 💗 **${displayName} is live on TikTok!**`,
+    embeds: [embed],
+    components: [row],
+    allowedMentions: {
+      parse: ["everyone"]
+    }
+  });
+
+  console.log(
+    isTest
+      ? `Sent TikTok test alert for @${username}`
+      : `Sent TikTok live alert for @${username}`
+  );
+}
+
+function listenSafely(connection, eventName, callback) {
+  if (!eventName) return;
+
+  try {
+    connection.on(eventName, callback);
+  } catch (error) {
+    console.log(`Could not attach listener for ${eventName}: ${error.message}`);
+  }
+}
+
+async function connectToTikTokLiveRoom(username) {
+  const state = tiktokStates.get(username);
+  if (!state) return;
+
+  if (!TikTokLiveConnection) return;
+  if (state.connection) return;
+
+  const connection = createTikTokConnection(username);
+  state.connection = connection;
+
+  listenSafely(connection, "connected", liveState => {
+    state.roomId = liveState?.roomId || null;
+    console.log(`Connected to @${username}'s TikTok LIVE room. Room ID: ${state.roomId || "Unknown"}`);
+  });
+
+  listenSafely(connection, "disconnected", event => {
+    console.log(`Disconnected from @${username}'s TikTok LIVE room.`);
+
+    if (event?.reason) {
+      console.log(`Disconnect reason: ${event.reason}`);
+    }
+  });
+
+  listenSafely(connection, "error", error => {
+    const message =
+      error?.exception?.message ||
+      error?.message ||
+      "Unknown TikTok connection error";
+
+    state.lastError = message;
+    console.error(`TikTok connection error for @${username}:`, message);
+  });
+
+  listenSafely(connection, "streamEnd", async () => {
+    console.log(`@${username}'s TikTok LIVE ended.`);
+    await markTikTokStreamerOffline(username, "streamEnd");
+  });
+
+  if (WebcastEvent?.STREAM_END) {
+    listenSafely(connection, WebcastEvent.STREAM_END, async () => {
+      console.log(`@${username}'s TikTok LIVE ended.`);
+      await markTikTokStreamerOffline(username, "STREAM_END");
+    });
+  }
+
+  try {
+    const liveState = await runWithTimeout(
+      connection.connect(),
+      25000,
+      "Live room monitor connect timed out."
+    );
+
+    state.roomId = liveState?.roomId || null;
+
+    console.log(`Live room monitor connected for @${username}.`);
+  } catch (error) {
+    state.connection = null;
+    state.roomId = null;
+
+    const message = error?.message || "Could not connect to TikTok LIVE room.";
+    state.lastError = message;
+
+    console.error(`Could not monitor @${username}'s live room:`, message);
+  }
+}
+
+async function disconnectTikTokLiveRoom(username) {
+  const state = tiktokStates.get(username);
+  if (!state || !state.connection) return;
+
+  const oldConnection = state.connection;
+
+  state.connection = null;
+  state.roomId = null;
+
+  try {
+    await oldConnection.disconnect();
+  } catch (error) {
+    console.error(`Disconnect error for @${username}:`, error.message);
+  }
+}
+
+async function markTikTokStreamerOffline(username, reason = "offline") {
+  const state = tiktokStates.get(username);
+  if (!state) return;
+
+  state.status = "offline";
+  state.isLive = false;
+  state.notified = false;
+  state.roomId = null;
+  state.lastReason = reason;
+
+  await disconnectTikTokLiveRoom(username);
+
+  console.log(`Marked @${username} offline. Reason: ${reason}`);
+}
+
+async function checkTikTokStreamer(username) {
+  ensureTikTokStates();
+
+  const state = tiktokStates.get(username);
+  if (!state || state.checking) return;
+
+  state.checking = true;
+  state.lastCheckedAt = new Date();
+
+  try {
+    const result = await fetchTikTokLiveStatus(username);
+
+    state.lastError = null;
+    state.lastReason = result.reason;
+
+    if (result.isLive) {
+      state.status = "live";
+      state.isLive = true;
+
+      if (result.roomId) {
+        state.roomId = result.roomId;
+      }
+
+      console.log(`[TikTok Check] @${username} => LIVE | ${result.method} | ${result.reason}`);
+
+      if (!state.notified) {
+        await sendTikTokLiveAlert(username, false);
+        state.notified = true;
+      }
+
+      await connectToTikTokLiveRoom(username);
+      return;
+    }
+
+    console.log(`[TikTok Check] @${username} => offline | ${result.method} | ${result.reason}`);
+
+    if (state.isLive || state.notified) {
+      await markTikTokStreamerOffline(username, result.reason);
+    } else {
+      state.status = "offline";
+      state.isLive = false;
+      state.notified = false;
+    }
+  } catch (error) {
+    const message = error?.message || "Unknown TikTok check error";
+
+    state.status = "unknown";
+    state.lastError = message;
+    state.lastReason = "TikTok check failed.";
+
+    console.error(`[TikTok Error] @${username}:`, message);
+  } finally {
+    state.checking = false;
+  }
+}
+
+async function checkAllTikTokStreamers() {
+  ensureTikTokStates();
+
+  const users = getTikTokUsers();
+
+  if (!users.length) {
+    console.log("No TikTok users configured. Add TIKTOK_USERS in .env.");
+    return;
+  }
+
+  for (const username of users) {
+    await checkTikTokStreamer(username);
+    await sleep(2000);
+  }
+}
+
+function buildTikTokStatusEmbed() {
+  ensureTikTokStates();
+
+  const lines = [];
+
+  for (const username of getTikTokUsers()) {
+    const state = tiktokStates.get(username);
+    if (!state) continue;
+
+    const checked = state.lastCheckedAt
+      ? `<t:${Math.floor(state.lastCheckedAt.getTime() / 1000)}:R>`
+      : "Never";
+
+    const errorText = state.lastError
+      ? `\nError: ${state.lastError}`
+      : "";
+
+    lines.push(
+      `**@${username}**\n` +
+      `Status: ${state.status}\n` +
+      `Notified: ${state.notified ? "Yes" : "No"}\n` +
+      `Room ID: ${state.roomId || "None"}\n` +
+      `Last checked: ${checked}\n` +
+      `Reason: ${state.lastReason}${errorText}`
+    );
+  }
+
+  return new EmbedBuilder()
+    .setColor(EMBED_COLOR)
+    .setTitle("TikTok Watcher Status")
+    .setDescription(lines.length ? lines.join("\n\n") : "No TikTok users configured.")
+    .setFooter({ text: "RGD Live Alerts" })
+    .setTimestamp();
+}
+
+async function sendTikTokTestAlert(interaction) {
+  const username = getTikTokUsers()[0] || "test_creator";
+
+  await sendTikTokLiveAlert(username, true);
+
+  return interaction.editReply({
+    content: `TikTok test alert sent for @${username}.`
+  });
 }
 
 // --------------------
@@ -238,26 +738,55 @@ client.once("clientReady", async () => {
     return;
   }
 
-await guild.commands.set([
-  {
-    name: "verify",
-    description: "Send the female verification panel"
-  },
-  {
-    name: "livecheck",
-    description: "Check if the Twitch streamer is live"
-  },
-  {
-    name: "testalert",
-    description: "Send a test Twitch live alert"
+  try {
+    await loadTikTokConnector();
+  } catch (error) {
+    console.error("TikTok connector startup error:", error.message);
   }
-]);
 
-  console.log("Slash commands /verify, /livecheck, and /testalert are ready.");
+  await guild.commands.set([
+    {
+      name: "verify",
+      description: "Send the female verification panel"
+    },
+    {
+      name: "livecheck",
+      description: "Check if the Twitch streamer is live"
+    },
+    {
+      name: "testalert",
+      description: "Send a test Twitch live alert"
+    },
+    {
+      name: "tiktokcheck",
+      description: "Check if the TikTok streamer is live"
+    },
+    {
+      name: "tiktoktest",
+      description: "Send a test TikTok live alert"
+    },
+    {
+      name: "tiktokstatus",
+      description: "Show TikTok watcher status"
+    }
+  ]);
+
+  console.log("Slash commands are ready.");
 
   await checkStreamer();
+  setInterval(checkStreamer, TWITCH_CHECK_INTERVAL_MS);
 
-  setInterval(checkStreamer, CHECK_INTERVAL_MS);
+  if (TikTokLiveConnection) {
+    ensureTikTokStates();
+
+    await checkAllTikTokStreamers();
+
+    setInterval(() => {
+      checkAllTikTokStreamers().catch(error => {
+        console.error("TikTok watcher loop error:", error.message);
+      });
+    }, TIKTOK_CHECK_INTERVAL_MS);
+  }
 });
 
 // --------------------
@@ -290,7 +819,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     if (interaction.commandName === "livecheck") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       try {
         const stream = await getStreamerLiveData();
@@ -303,7 +832,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         return interaction.editReply({
           content:
-            `${stream.user_name} is live right now: ${getTwitchUrl()}\n` +
+            `${stream.user_name} is live right now on Twitch: ${getTwitchUrl()}\n` +
             `Title: ${stream.title || "No title"}`
         });
       } catch (error) {
@@ -314,15 +843,39 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     if (interaction.commandName === "testalert") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       return sendTestAlert(interaction);
+    }
+
+    if (interaction.commandName === "tiktokcheck") {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      await checkAllTikTokStreamers();
+
+      return interaction.editReply({
+        content: "TikTok check completed.",
+        embeds: [buildTikTokStatusEmbed()]
+      });
+    }
+
+    if (interaction.commandName === "tiktoktest") {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      return sendTikTokTestAlert(interaction);
+    }
+
+    if (interaction.commandName === "tiktokstatus") {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      return interaction.editReply({
+        embeds: [buildTikTokStatusEmbed()]
+      });
     }
   }
 
   if (!interaction.isButton()) return;
 
   if (interaction.customId === "open_ticket") {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const existing = interaction.guild.channels.cache.find(channel => {
       return (
@@ -423,7 +976,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({
         content: "Admins only.",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -442,7 +995,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return interaction.reply({
       content: "Are you sure you want to close this ticket?",
       components: [row],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -457,7 +1010,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({
         content: "Admins only.",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -491,6 +1044,14 @@ client.on(Events.InteractionCreate, async interaction => {
       interaction.channel.delete().catch(() => {});
     }, 3000);
   }
+});
+
+process.on("unhandledRejection", error => {
+  console.error("Unhandled promise rejection:", error);
+});
+
+process.on("uncaughtException", error => {
+  console.error("Uncaught exception:", error);
 });
 
 client.login(process.env.TOKEN);

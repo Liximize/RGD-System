@@ -1,13 +1,1 @@
-{
-"name": "verification-bot",
-"version": "1.0.0",
-"main": "index.js",
-"type": "commonjs",
-"scripts": {
-"start": "node index.js"
-},
-"dependencies": {
-"discord.js": "^14.21.0",
-"dotenv": "^17.2.1"
-}
-}
+{"name":"rgd-system","version":"1.0.0","main":"index.js","type":"commonjs","scripts":{"start":"node index.js"},"dependencies":{"discord.js":"^14.21.0","dotenv":"^17.2.1","tiktok-live-connector":"file:vendor/tiktok-live-connector-2.3.0-beta1.tgz"}}
