@@ -11,11 +11,13 @@ const {
   EmbedBuilder,
   Events,
   ActivityType,
-  MessageFlags
+  MessageFlags,
+  Partials
 } = require("discord.js");
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  partials: [Partials.GuildMember]
 });
 
 const EMBED_COLOR = 0xeb91ee;
@@ -746,6 +748,16 @@ client.once("clientReady", async () => {
 
   await guild.commands.set([
     {
+      name: "welcome",
+      description: "Set up welcome messages for your server",
+      default_member_permissions: PermissionsBitField.Flags.ManageGuild.toString()
+    },
+    {
+      name: "leave",
+      description: "Set up leave messages for your server",
+      default_member_permissions: PermissionsBitField.Flags.ManageGuild.toString()
+    },
+    {
       name: "verify",
       description: "Send the female verification panel"
     },
@@ -1053,5 +1065,10 @@ process.on("unhandledRejection", error => {
 process.on("uncaughtException", error => {
   console.error("Uncaught exception:", error);
 });
+
+// Add welcome/leave alongside the existing verification and live-alert systems.
+require("./src/member-events")(client);
+
+require("./src/dashboard").startDashboard(client);
 
 client.login(process.env.TOKEN);
