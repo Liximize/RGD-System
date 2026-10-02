@@ -1,5 +1,191 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RGD Dashboard</title><link rel="stylesheet" href="/styles.css"></head><body>
-<div id="login" class="center"><form id="loginForm" class="card login"><div class="brand">RGD</div><h1>Private Dashboard</h1><p>Enter your dashboard password.</p><input id="password" type="password" autocomplete="current-password" placeholder="Password" required><button>Sign in</button><div id="loginError" class="error"></div></form></div>
-<div id="app" class="hidden"><aside><div class="logo"><b>RGD</b><span>Dashboard</span></div><button class="nav active" data-kind="welcome">Welcome</button><button class="nav" data-kind="leave">Leave</button><button id="logout" class="logout">Sign out</button></aside><main><header><div><span class="eyebrow">SERVER CONFIGURATION</span><h1 id="pageTitle">Welcome message</h1></div><div id="guild" class="guild"></div></header>
-<div class="grid"><section class="card editor"><div class="section-head"><h2>Message settings</h2><label class="switch"><input id="enabled" type="checkbox"><span></span> Enabled</label></div><label>Channel<select id="channelId"></select></label><label>Format<select id="mode"><option value="text">Normal message</option><option value="embed">Embed only</option><option value="both">Normal + embed</option></select></label><label>Normal message<textarea id="content" rows="3"></textarea></label><div class="two"><label>Embed title<input id="title"></label><label>Color<input id="color" type="color"></label></div><label>Description<textarea id="description" rows="5"></textarea></label><label>Footer<input id="footer"></label><div class="two"><label>Thumbnail URL<input id="thumbnail"></label><label>Image URL<input id="image"></label></div><div class="two"><label>Author<input id="author"></label><label>Author icon URL<input id="authorIcon"></label></div><label>Title link URL<input id="url"></label><div class="checks"><label><input id="ping" type="checkbox"> Ping member</label><label><input id="ignoreBots" type="checkbox"> Ignore bots</label><label><input id="timestamp" type="checkbox"> Timestamp</label></div><p class="hint">Placeholders: {user} {username} {displayName} {userId} {server} {memberCount} {avatar} {serverIcon}</p><div class="actions"><button id="save">Save changes</button><button id="test" class="secondary">Send test</button><span id="status"></span></div></section>
-<section class="card preview-card"><div class="section-head"><h2>Discord preview</h2><span class="live">LIVE</span></div><div class="discord"><div class="avatar">RGD</div><div class="message"><b>RGD <span class="bot">APP</span></b><span class="time"> Today at 12:00</span><div id="normalPreview"></div><div id="embedPreview" class="embed"><div id="authorPreview" class="embed-author"></div><div id="titlePreview" class="embed-title"></div><div id="descriptionPreview" class="embed-desc"></div><img id="thumbPreview" class="thumb"><img id="imagePreview" class="image"><div id="footerPreview" class="footer"></div></div></div></div></section></div></main></div><script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>RGD Dashboard</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<!-- Sign in -->
+<div id="login" class="login-wrap">
+  <form id="loginForm" class="login-card" autocomplete="on">
+    <div class="brand">RGD</div>
+    <h1>Private Dashboard</h1>
+    <p class="sub" id="loginSub">Sign in to manage your server messages.</p>
+    <label class="field">
+      <span class="lbl">Password</span>
+      <span class="pw">
+        <input id="password" type="password" autocomplete="current-password" placeholder="Dashboard password" required autofocus>
+        <button type="button" id="pwToggle" class="ghost sm" tabindex="-1">Show</button>
+      </span>
+    </label>
+    <button class="primary block" id="loginBtn">Sign in</button>
+    <div id="loginError" class="error" role="alert"></div>
+  </form>
+</div>
+
+<!-- App -->
+<div id="app" class="shell hidden">
+  <aside>
+    <div class="logo"><span class="mark">RGD</span><span class="logo-text">Dashboard</span></div>
+    <nav>
+      <button class="nav active" data-view="overview">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+        <span>Overview</span>
+      </button>
+      <button class="nav" data-view="welcome">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM3 20c0-3.3 3.6-6 8-6s8 2.7 8 6M19 7v6M16 10h6"/></svg>
+        <span>Welcome</span><i class="dot hidden" data-dot="welcome"></i>
+      </button>
+      <button class="nav" data-view="leave">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM3 20c0-3.3 3.6-6 8-6s8 2.7 8 6M16 10h6"/></svg>
+        <span>Leave</span><i class="dot hidden" data-dot="leave"></i>
+      </button>
+    </nav>
+    <button id="logout" class="nav logout">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/></svg>
+      <span>Sign out</span>
+    </button>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <span class="eyebrow" id="crumb">SERVER</span>
+        <h1 id="pageTitle">Overview</h1>
+      </div>
+      <div id="guild" class="guild"></div>
+    </header>
+
+    <!-- Overview -->
+    <section id="view-overview">
+      <div class="stats">
+        <div class="stat"><span class="stat-k">Server</span><span class="stat-v" id="st-server">-</span></div>
+        <div class="stat"><span class="stat-k">Members</span><span class="stat-v" id="st-members">-</span></div>
+        <div class="stat"><span class="stat-k">Active systems</span><span class="stat-v" id="st-active">-</span></div>
+      </div>
+      <div class="cards2" id="ov-cards"></div>
+      <div class="card">
+        <div class="card-head"><h2>Placeholders</h2><span class="muted">Usable in message text, embed title, description, author and footer</span></div>
+        <div class="ph-grid" id="ov-ph"></div>
+      </div>
+    </section>
+
+    <!-- Editor -->
+    <section id="view-editor" class="hidden">
+      <div class="editor-grid">
+        <div class="col">
+
+          <div class="card">
+            <div class="card-head">
+              <h2>Delivery</h2>
+              <label class="switch"><input id="enabled" type="checkbox"><span class="track"></span><span class="sw-label" id="enabledLabel">Disabled</span></label>
+            </div>
+            <label class="field"><span class="lbl">Channel</span>
+              <select id="channelId"></select>
+            </label>
+            <div class="field"><span class="lbl">Format</span>
+              <div class="seg" id="modeSeg" role="group" aria-label="Message format">
+                <button type="button" data-mode="text">Normal message</button>
+                <button type="button" data-mode="embed">Embed only</button>
+                <button type="button" data-mode="both">Normal + embed</button>
+              </div>
+              <input id="mode" type="hidden">
+            </div>
+          </div>
+
+          <div class="card" id="card-text">
+            <div class="card-head"><h2>Message text</h2><span class="muted note" id="note-text"></span></div>
+            <label class="field"><span class="lbl">Normal message <em class="count" data-count="content"></em></span>
+              <textarea id="content" rows="3" maxlength="2000"></textarea>
+            </label>
+          </div>
+
+          <div class="card" id="card-embed">
+            <div class="card-head"><h2>Embed</h2><span class="muted note" id="note-embed"></span></div>
+            <div class="row2">
+              <label class="field"><span class="lbl">Title <em class="count" data-count="title"></em></span>
+                <input id="title" maxlength="256">
+              </label>
+              <div class="field"><span class="lbl">Color</span>
+                <span class="color-row">
+                  <input id="colorPicker" type="color" aria-label="Pick a color">
+                  <input id="color" maxlength="7" spellcheck="false" placeholder="#eb91ee">
+                </span>
+                <span class="err" id="colorErr"></span>
+              </div>
+            </div>
+            <label class="field"><span class="lbl">Description <em class="count" data-count="description"></em></span>
+              <textarea id="description" rows="5" maxlength="4096"></textarea>
+            </label>
+            <label class="field"><span class="lbl">Footer <em class="count" data-count="footer"></em></span>
+              <input id="footer" maxlength="1000">
+            </label>
+            <div class="row2">
+              <label class="field"><span class="lbl">Author name <em class="count" data-count="author"></em></span>
+                <input id="author" maxlength="256">
+              </label>
+              <label class="field"><span class="lbl">Author icon URL</span>
+                <input id="authorIcon" placeholder="https://... or {avatar}">
+              </label>
+            </div>
+            <label class="field"><span class="lbl">Title link URL</span>
+              <input id="url" placeholder="https://...">
+            </label>
+          </div>
+
+          <div class="card" id="card-media">
+            <div class="card-head"><h2>Images</h2><span class="muted">Direct public https links, {avatar} or {serverIcon}</span></div>
+            <div class="row2">
+              <label class="field"><span class="lbl">Thumbnail URL</span>
+                <input id="thumbnail" placeholder="{avatar}">
+              </label>
+              <label class="field"><span class="lbl">Large image URL</span>
+                <input id="image" placeholder="https://...">
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Behaviour</h2></div>
+            <label class="opt"><span><b>Ping member</b><small>Mention the member in the normal message. Include {user} in the text. Everyone and role pings are always blocked.</small></span>
+              <span class="switch"><input id="ping" type="checkbox"><span class="track"></span></span></label>
+            <label class="opt"><span><b>Ignore bots</b><small>Skip messages when a bot joins or leaves.</small></span>
+              <span class="switch"><input id="ignoreBots" type="checkbox"><span class="track"></span></span></label>
+            <label class="opt"><span><b>Timestamp</b><small>Show the time in the embed footer.</small></span>
+              <span class="switch"><input id="timestamp" type="checkbox"><span class="track"></span></span></label>
+          </div>
+        </div>
+
+        <div class="col sticky">
+          <div class="card">
+            <div class="card-head"><h2>Preview</h2><span class="live"><i></i>Live</span></div>
+            <div class="discord" id="pv"></div>
+            <p class="muted small">The preview uses the bot account as the sample member. Mentions and server data are examples.</p>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Insert placeholder</h2><span class="muted">Click a field, then a chip</span></div>
+            <div class="chips" id="chips"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="savebar" id="savebar">
+        <div class="save-status" id="saveStatus"><i></i><span>All changes saved</span></div>
+        <div class="save-actions">
+          <button class="ghost" id="discard" type="button">Discard</button>
+          <button class="secondary" id="test" type="button">Send test</button>
+          <button class="primary" id="save" type="button">Save changes</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>
