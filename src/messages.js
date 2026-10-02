@@ -12,7 +12,17 @@ function variables(member) {
 function buildMessage(config, member, preview = false) {
   validate(config);
   const vars = variables(member);
-  const payload = { allowedMentions: { parse: [], users: !preview && config.ping ? [member.id] : [], repliedUser: false } };
+  const payload = {
+  allowedMentions: {
+    parse: [],
+    users: [member.id],
+    repliedUser: false
+  }
+};
+
+if (preview || !config.ping) {
+  payload.flags = 4096;
+}
   if (config.mode !== 'embed') payload.content = render(config.content, vars, 2000);
   if (config.mode !== 'text') {
     const embed = new EmbedBuilder().setColor(config.color);
