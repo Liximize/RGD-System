@@ -54,3 +54,17 @@ test('image and link inputs reject unsafe or malformed URLs', () => {
   for (const image of ['', '{avatar}', '{serverIcon}', 'https://example.com/image.gif']) assert.doesNotThrow(() => validate({ ...defaults('welcome'), image }));
 });
 
+test('shared store: two callers with the same file see each other\'s changes', () => {
+  const { getStore } = require('../src/settings');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rgd-test-'));
+  try {
+    const file = path.join(dir, 'settings.json');
+    const a = getStore(file), b = getStore(file);
+    assert.equal(a, b);
+    a.update('g', 'welcome', { content: 'from dashboard' });
+    b.update('g', 'leave', { content: 'from slash command' });
+    const reloaded = new Settings(file);
+    assert.equal(reloaded.get('g', 'welcome').content, 'from dashboard');
+    assert.equal(reloaded.get('g', 'leave').content, 'from slash command');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
