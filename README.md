@@ -1,18 +1,32 @@
-# RGD System — Existing Features + Welcome & Leave
+# RGD System
 
-Your original verification tickets, Twitch alerts, and TikTok alerts are retained. This version adds `/welcome` and `/leave` with separate configuration panels.
+RGD System provides verification tickets, welcome and leave messages, and a private web dashboard for the welcome and leave messages.
 
-Existing commands remain: `/verify`, `/livecheck`, `/testalert`, `/tiktokcheck`, `/tiktoktest`, and `/tiktokstatus`. Existing ticket buttons and live-alert logic are retained without a rewrite. The existing issues identified in the earlier review have not been fixed as part of this additive change.
+Commands: `/verify`, `/welcome`, and `/leave`.
 
 ## Setup
 
-1. Replace the old project's code with the contents of this folder. Keep your existing `.env` and all environment variables. Keep the included `vendor` folder: TikTok still requires it. Do not use the earlier welcome/leave-only ZIP.
+1. Replace the old project's code with the contents of this folder and keep your existing `.env`.
 2. Use Node.js 22.12 or newer. Run `npm ci`.
-3. Copy `.env.example` to `.env`. Set `TOKEN` to your bot token and `GUILD_ID` to your server ID. Existing environment variables with those names also work. Keep your existing Twitch, TikTok, ticket, role, and channel values; those systems still use them.
+3. Create a `.env` file (or set environment variables in your host's panel) using the table below.
 4. In the Discord Developer Portal, open your application → **Bot** → **Privileged Gateway Intents** and enable **Server Members Intent**. It is required for join/leave events. Message Content and Presence intents are not needed.
-5. Make sure the bot is in your server with the `bot` and `applications.commands` scopes. Welcome/leave delivery needs **View Channel**, **Send Messages**, and **Embed Links** in its channels. Preserve the bot permissions required by your existing ticket and alert systems.
-6. Run `npm start`. Startup registers all eight commands in `GUILD_ID`: the six original commands plus `/welcome` and `/leave`.
+5. Make sure the bot is in your server with the `bot` and `applications.commands` scopes. Welcome/leave delivery needs **View Channel**, **Send Messages**, and **Embed Links** in its channels. Preserve the bot permissions required by the ticket system (manage channels, send messages).
+6. Run `npm start`. Startup registers the three commands in `GUILD_ID`.
 7. Run either command, select the channel and message format, edit your message, preview it, and click **Enable**. Configure welcome and leave separately; both start disabled.
+
+## Environment variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `TOKEN` | Yes | Discord bot token |
+| `GUILD_ID` | Yes | Your server ID |
+| `TICKET_CATEGORY_ID` | For tickets | Category where ticket channels are created |
+| `PING_ROLE_ID` | For tickets | Role that sees and is pinged in tickets |
+| `LOG_CHANNEL_ID` | For tickets | Channel for ticket open/close logs |
+| `TRANSCRIPT_CHANNEL_ID` | Optional | Used for ticket logs if `LOG_CHANNEL_ID` is not set |
+| `DATA_FILE` | Optional | Settings file path (default `data/settings.json`) |
+| `DASHBOARD_PASSWORD` | For dashboard | The dashboard is disabled when this is empty |
+| `DASHBOARD_PORT` | Optional | Dashboard port (default 3000; `PORT` is used if the host sets it) |
 
 ## Panel controls
 
@@ -24,7 +38,7 @@ Existing commands remain: `/verify`, `/livecheck`, `/testalert`, `/tiktokcheck`,
 - **Preview:** privately displays the saved message using you as the sample member.
 - **Send test:** posts the saved message in the configured channel using you as the sample member, even while disabled. It does not ping anyone.
 - **Enable / Disable:** control automatic messages without deleting settings.
-- **Ping:** allows mentioning only the joining/leaving member in normal text. Include `{user}` in that text. Mentions inside embeds do not produce notification pings; departed users cannot be notified in a server they have left. Everyone and role pings are blocked for welcome/leave messages; existing live-alert pings are unchanged.
+- **Ping:** allows mentioning only the joining/leaving member in normal text. Include `{user}` in that text. Mentions inside embeds do not produce notification pings; departed users cannot be notified in a server they have left. Everyone and role pings are blocked for welcome/leave messages.
 - **Ignore bots:** skip bot joins/leaves when on.
 - **Time:** show or hide the embed timestamp.
 
@@ -62,4 +76,14 @@ Run `npm test` for the dependency-free checks of persistence, setting isolation,
 If commands appear but no messages arrive, check that the relevant panel is enabled, its channel is correct, Server Members Intent is enabled, and the bot has channel permissions. Delivery failures are logged to the console.
 
 Reference: https://docs.discord.com/developers/events/gateway#privileged-intents
-\n\n## Private web dashboard\n\nThe bot now includes an optional private dashboard for the existing welcome and leave systems. It uses the same `DATA_FILE` settings store as the Discord slash commands, so changes made in either interface stay in sync.\n\n1. Set `DASHBOARD_PASSWORD` to a long, unique password in your host environment. Do not commit the real password.\n2. Start the bot normally with `npm start`. The dashboard listens on `PORT` when the host supplies one, otherwise `DASHBOARD_PORT`/port 3000.\n3. Open the web-service URL, sign in, select Welcome or Leave, edit the embed with live preview, save, or send a test message.\n\nFor an internet-hosted deployment, use HTTPS (Render/Railway provide this on their public service URL). This first version intentionally uses a private password instead of Discord OAuth to avoid adding OAuth secrets and callback configuration. Sessions expire after 24 hours and are held in memory, so a bot restart signs the dashboard out.\n
+
+
+## Private web dashboard
+
+The bot now includes an optional private dashboard for the existing welcome and leave systems. It uses the same `DATA_FILE` settings store as the Discord slash commands, so changes made in either interface stay in sync.
+
+1. Set `DASHBOARD_PASSWORD` to a long, unique password in your host environment. Do not commit the real password.
+2. Start the bot normally with `npm start`. The dashboard listens on `PORT` when the host supplies one, otherwise `DASHBOARD_PORT`/port 3000.
+3. Open the web-service URL, sign in, select Welcome or Leave, edit the embed with live preview, save, or send a test message.
+
+For an internet-hosted deployment, use HTTPS (Render/Railway provide this on their public service URL). This first version intentionally uses a private password instead of Discord OAuth to avoid adding OAuth secrets and callback configuration. Sessions expire after 24 hours and are held in memory, so a bot restart signs the dashboard out.
