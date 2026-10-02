@@ -1,8 +1,9 @@
 const http = require('node:http');
 const crypto = require('node:crypto');
+const { ChannelType } = require('discord.js');
 const path = require('node:path');
 const fs = require('node:fs');
-const { Settings } = require('./settings');
+const { getStore } = require('./settings');
 const { validate, buildMessage, destination } = require('./messages');
 
 const MAX_BODY = 64 * 1024;
@@ -26,8 +27,9 @@ function safeEqual(a, b) {
   return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
 }
 async function body(req) {
-  let size=0, raw='';
-  for await (const chunk of req) { size += chunk.length; if (size > MAX_BODY) throw new Error('Request too large.'); raw += chunk; }
+  let size=0; const chunks=[];
+  for await (const chunk of req) { size += chunk.length; if (size > MAX_BODY) throw new Error('Request too large.'); chunks.push(chunk); }
+  const raw = Buffer.concat(chunks).toString('utf8');
   try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Invalid JSON.'); }
 }
 function cleanPatch(input) {
@@ -54,7 +56,7 @@ function startDashboard(client) {
   const password = process.env.DASHBOARD_PASSWORD;
   if (!password) { console.log('[dashboard] DASHBOARD_PASSWORD is not set; dashboard disabled.'); return; }
   const port = Number(process.env.PORT || process.env.DASHBOARD_PORT || 3000);
-  const store = new Settings(process.env.DATA_FILE || path.join(__dirname, '..', 'data', 'settings.json'));
+  const store = getStore(process.env.DATA_FILE || path.join(__dirname, '..', 'data', 'settings.json'));
   const server = http.createServer(async (req,res) => {
     try {
       const url = new URL(req.url, 'http://local');
@@ -68,7 +70,7 @@ function startDashboard(client) {
       if (!session(req)) return json(res,401,{error:'Login required.'});
       const guild = client.guilds.cache.get(process.env.GUILD_ID); if (!guild) return json(res,503,{error:'Configured Discord server is not available.'});
       if (url.pathname === '/api/bootstrap' && req.method === 'GET') {
-        const channels = [...guild.channels.cache.values()].filter(c=>c.isTextBased() && !c.isThread()).sort((a,b)=>a.rawPosition-b.rawPosition).map(c=>({id:c.id,name:c.name}));
+        const channels = [...guild.channels.cache.values()].filter(c=>[ChannelType.GuildText,ChannelType.GuildAnnouncement].includes(c.type)).sort((a,b)=>a.rawPosition-b.rawPosition).map(c=>({id:c.id,name:c.name}));
         return json(res,200,{guild:{id:guild.id,name:guild.name,icon:guild.iconURL({size:128})},channels,welcome:store.get(guild.id,'welcome'),leave:store.get(guild.id,'leave'),preview:previewData(client,guild)});
       }
       const m=url.pathname.match(/^\/api\/(welcome|leave)$/);

@@ -66,7 +66,10 @@ async function handle(interaction, store) {
   if (action === 'preview' || action === 'test') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const member = await interaction.guild.members.fetch(interaction.user.id);
-    if (action === 'preview') return interaction.editReply(buildMessage(config, member, true));
+    if (action === 'preview') {
+      const { flags, ...previewPayload } = buildMessage(config, member, true);
+      return interaction.editReply(previewPayload);
+    }
     const channel = await destination(interaction.guild, config);
     await channel.send(buildMessage(config, member, true));
     return interaction.editReply({ content: `Test sent to ${channel}. It uses you as the sample member and does not ping anyone.` });

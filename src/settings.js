@@ -32,4 +32,12 @@ class Settings {
     return value;
   }
 }
-module.exports = { Settings, defaults };
+// One shared instance per file, so the slash commands and the web dashboard
+// always read and write the same in-memory copy instead of overwriting each other.
+const stores = new Map();
+function getStore(file) {
+  const key = path.resolve(file);
+  if (!stores.has(key)) stores.set(key, new Settings(key));
+  return stores.get(key);
+}
+module.exports = { Settings, defaults, getStore };

@@ -1,10 +1,10 @@
 const path = require('node:path');
 const { Events } = require('discord.js');
-const { Settings } = require('./settings');
+const { getStore } = require('./settings');
 const { onInteraction } = require('./panels');
 const { deliver } = require('./messages');
 module.exports = function registerMemberEvents(client) {
-  const store = new Settings(process.env.DATA_FILE || path.join(__dirname, '..', 'data', 'settings.json'));
+  const store = getStore(process.env.DATA_FILE || path.join(__dirname, '..', 'data', 'settings.json'));
   client.on(Events.InteractionCreate, interaction => {
     if (interaction.guildId !== process.env.GUILD_ID) return;
     if ((interaction.isChatInputCommand() && ['welcome', 'leave'].includes(interaction.commandName)) || interaction.customId?.startsWith('rgd:')) {
